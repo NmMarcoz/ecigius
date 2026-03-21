@@ -1,14 +1,19 @@
 [project]
-name = "ecigius"
+name = "ecigius-workspace"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
+# Adicionamos os pacotes locais como dependências da raiz
 dependencies = [
-    "matplotlib>=3.10.8",
-    "numpy>=2.4.3",
-    "plotext>=5.3.2",
-    "scipy>=1.17.1",
-    "textual>=8.1.1",
-    "typer>=0.24.1",
+    "ecigius-core",
+    "ecigius-cli",
+    "ecigius-tui"
 ]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# Avisamos ao uv que essas dependências devem ser puxadas do próprio workspace
+[tool.uv.sources]
+ecigius-core = { workspace = true }
+ecigius-cli = { workspace = true }
+ecigius-tui = { workspace = true }

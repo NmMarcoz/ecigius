@@ -1,0 +1,19 @@
+[project]
+name = "ecigius-cli"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "typer",
+    "ecigius-core",
+    "matplotlib"
+]
+
+[project.scripts]
+ecg-cli = "ecigius_cli.main:app"
+
+[tool.uv.sources]
+ecigius-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
