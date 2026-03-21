@@ -1,27 +1,113 @@
-# Ecigius: Simulador de Sinais Sintéticos de ECG
+# Ecigius: Synthetic ECG Simulator
 
-**Ecigius** é um gerador de sinais de eletrocardiograma (ECG) sintéticos baseado no renomado **Modelo Matemático de McSharry et al.** Ele utiliza um sistema de equações diferenciais ordinárias (EDOs) tridimensionais para modelar com alta precisão a morfologia P-Q-R-S-T.
+**Ecigius** is a ecg generator based on the **McSharry model**. It uses a system of thridimensional ordinary differential equations to model the P-Q-R-S-T morphology.
 
-Além do ritmo sinusal normal, o motor matemático possui suporte nativo para simulação de **Fibrilação Atrial (FA)**, implementando a ausência da onda P, variabilidade caótica do intervalo RR e injeção de ruído fibrilatório (ondas *f*) na linha de base.
+Besides the sinus normal rhytm, the matematic motor has native support to **Atrial Fibrilation (AF)** simulation.
 
-## Arquitetura do Projeto
+## Architecture
 
-O projeto é um **monorepo** gerenciado pelo `uv`, separado por packages.
+It's an uv monorepo.
 
-O workspace é dividido em três pacotes principais:
+The workspace is separated in three principal packages:
+ - **`ecigius-core`**: the mathemmatic motor. Has the equations and constants used in the **McSharry** model. It uses `numpy` and `scipy`.
 
-* 🧠 **`ecigius-core`**: O motor matemático. Contém as EDOs, constantes do modelo de McSharry e integrações numéricas numéricas usando `numpy` e `scipy.integrate`.
-* 💻 **`ecigius-cli`**: Uma CLI rápida e tipada construída com `Typer`. Permite gerar sinais em lote, visualizar via `matplotlib` e exportar datasets para `.csv`.
-* 📟 **`ecigius-tui`**: Uma TUI interativa construída com `Textual`. Inclui plotagem nativa do sinal diretamente no terminal usando caracteres Braille (`plotext`).
+ - **`ecigius-cli`**: The ecigius cli. It uses `Typer`, and can export to csv the generated ecgs.
 
-## Instalação e Configuração
+ - **`ecigius-tui`**: The ecigius terminal interface. Built with `Textual`.
 
-Pré-requisitos: 
+----
+
+## Installing
+Requisits:
 - Python (>=3.10) 
 - [uv](https://github.com/astral-sh/uv)
 
-1. Clone o repositório.
-2. Na raiz do projeto, instale as dependências e faça o link do workspace:
+Steps:
+1. Clone the repository
+2. In the root, install the dependencies and sync with uv:
+
 ```bash
 uv sync
 ```
+
+Isso criará um único ambiente virtual (.venv) na raiz com todos os pacotes perfeitamente linkados.
+🛠️ Como Usar
+
+----
+
+## Usage
+At this moment, you can use in two ways:
+- The CLI
+- The TUI
+
+Pick the one you like most, or build yourself a interface for this.
+
+
+### 1. CLI Usage
+
+
+#### Help 
+
+```bash
+uv run ecg-cli --help
+```
+
+#### Plotting a 10 seconds ecg and saving to a .csv
+
+```bash
+uv run ecg-cli --rhythm fa --duration 10 --out-dir datasets/
+```
+
+#### Generating a 30 seconds ecg without plotting.
+```bash
+uv run ecg-cli --rhythm normal --hr 80 --duration 30 --no-plot --output teste_normal.csv
+```
+
+### 2. TUI Usage
+
+Just run the TUI in the terminal:
+
+```bash
+uv run ecg-tui
+```
+
+---
+
+## Mathematical Model (McSharry)
+
+The generator utilizate the following system to produce the signal on z axis:
+
+
+$$\dot{x} = \alpha x - \omega y$$
+
+$$\dot{y} = \alpha y + \omega x$$
+
+$$\dot{z} = -\sum_{i \in \{P,Q,R,S,T\}} a_i \Delta\theta_i \exp\left(-\frac{\Delta\theta_i^2}{2b_i^2}\right) - (z - z_0)$$
+
+Where:
+
+    α: Is defined as 1−x2+y2​, which forces the trajectory to return to the limit cycle (a circle of unit radius) if it deviates.
+
+    ω: Is the angular velocity, which controls the heart rate (RR interval).
+
+    Δθi​: Is the angular difference (θ−θi​)(mod2π), where θ=atan2(y,x) is the current angle of the trajectory.
+
+    ai​,bi​,θi​: Represent the amplitude, width, and phase (angular position) of each of the five corresponding ECG waves (P, Q, R, S, T), respectively.
+
+    z0​: Represents the baseline wander term, which can be coupled to respiratory frequency or used to inject fibrillatory noise (f-waves).
+
+---
+
+## Roadmap
+
+    [x] Motor Matemático Base (Modelo de McSharry).
+
+    [x] Suporte para Fibrilação Atrial (Ondas f, Sem P, RR Irregular).
+
+    [x] Exportação para CSV.
+
+    [x] Arquitetura de pacotes separada (Core, CLI, TUI).
+
+    [ ] Injeção de ruído EMG (Artefato de Movimento Muscular).
+
+    [ ] Interface Gráfica Desktop (UI).
