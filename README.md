@@ -96,18 +96,3 @@ Where:
 
     z0​: Represents the baseline wander term, which can be coupled to respiratory frequency or used to inject fibrillatory noise (f-waves).
 
----
-
-## Roadmap
-
-    [x] Motor Matemático Base (Modelo de McSharry).
-
-    [x] Suporte para Fibrilação Atrial (Ondas f, Sem P, RR Irregular).
-
-    [x] Exportação para CSV.
-
-    [x] Arquitetura de pacotes separada (Core, CLI, TUI).
-
-    [ ] Injeção de ruído EMG (Artefato de Movimento Muscular).
-
-    [ ] Interface Gráfica Desktop (UI).
