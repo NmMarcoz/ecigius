@@ -9,27 +9,22 @@ import csv
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
-
-# Importamos o nosso motor matemático do workspace
-from ecigius_core.generator import generate_signal
-
 import matplotlib
-# Configura o matplotlib para rodar em background (não travar a TUI)
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
-
 import webbrowser
 
+from ecigius_core.generator import generate_signal
+
 class ECGSimulatorApp(App):
-    """TUI moderna para simulação de sinais de ECG parametrizável."""
+    """TUI moderna para simulação de sinais de ECG parametrizável e com ruídos."""
     
-    # --- CSS CORRIGIDO PARA RESOLVER OS CORTES ---
     CSS = """
     Screen {
         align: center middle;
     }
     #main-container {
-        width: 75; /* Aumentado de 60 para 75 para dar mais respiro lateral */
+        width: 80; /* Aumentei um pouquinho para acomodar as 3 colunas de ruído */
         height: auto;
         border: round $primary;
         padding: 1 2;
@@ -39,23 +34,37 @@ class ECGSimulatorApp(App):
         height: auto;
         margin-bottom: 1;
     }
+    .section-title {
+        text-style: bold;
+        color: $accent;
+        margin-top: 1;
+        margin-bottom: 1;
+    }
     Label {
-        width: 20;
+        width: 22; 
         content-align: left middle;
     }
     Select, Input {
         width: 1fr;
     }
     
-    #pqrst-params-grid {
+    #noise-params-grid, #pqrst-params-grid {
         layout: grid;
-        grid-size: 3 2; /* Alterado de 6x2 para 3 colunas confortáveis x 2 linhas */
-        grid-gutter: 2; /* Aumentado o gutter para separar os pares */
-        margin-top: 1;
+        grid-size: 3 2; 
+        grid-gutter: 2; 
         border: solid $secondary;
-        padding: 2; /* Aumentado o padding para respiro interno */
+        padding: 1 2; 
         height: auto;
-        display: none; /* Escondido por padrão! */
+    }
+    
+    #pqrst-params-grid {
+        display: none; /* Só aparece no modo manual */
+        margin-top: 1;
+    }
+
+    #noise-params-grid {
+        grid-size: 3 1; /* 3 colunas, 1 linha para os ruídos */
+        margin-bottom: 1;
     }
     
     .param-entry {
@@ -64,11 +73,11 @@ class ECGSimulatorApp(App):
         align: left middle;
     }
     .param-entry Label {
-        width: 10; /* Largura fixa e suficiente para rótulos como "P Amp:" */
+        width: 12; 
         content-align: left middle;
     }
     .param-entry Input {
-        width: 1fr; /* Input ocupa o restante do espaço na célula do grid */
+        width: 1fr; 
     }
 
     Button {
@@ -92,14 +101,12 @@ class ECGSimulatorApp(App):
     }
     """
 
-    # O método compose() anterior já estava correto na estrutura de widgets.
-    # Vou fornecer o código completo do app.py corrigido para você colar.
-
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         
         with Vertical(id="main-container"):
-            # Linha: Ritmo
+            # --- BLOCO: CLÍNICO ---
+            yield Label("Configurações Clínicas", classes="section-title")
             with Horizontal():
                 yield Label("Ritmo Cardíaco:")
                 yield Select(
@@ -109,36 +116,50 @@ class ECGSimulatorApp(App):
                         ("Personalizado (Manual)", "manual")
                     ),
                     id="rhythm-select",
-                    value="manual" # Começa no manual para já vermos os parâmetros
+                    value="normal"
                 )
-            
-            # Linha: Duração
+            with Horizontal():
+                yield Label("FC Média (BPM):")
+                yield Input(value="60.0", id="hr-input")
+            with Horizontal():
+                yield Label("Variabilidade (BPM):")
+                yield Input(value="1.0", id="hr-std-input", placeholder="Ex: 15.0 para alta variância")
+
+            # --- BLOCO: RUÍDOS (ETAPA 5) ---
+            yield Label("Artefatos e Ruídos (Opcional)", classes="section-title")
+            with Grid(id="noise-params-grid"):
+                with Horizontal(classes="param-entry"):
+                    yield Label("Respiração:")
+                    yield Input(value="0.0", id="bw-input", placeholder="Ex: 0.2")
+                with Horizontal(classes="param-entry"):
+                    yield Label("Rede (60Hz):")
+                    yield Input(value="0.0", id="pl-input", placeholder="Ex: 0.05")
+                with Horizontal(classes="param-entry"):
+                    yield Label("Térmico (Std):")
+                    yield Input(value="0.0", id="noise-input", placeholder="Ex: 0.03")
+
+            # --- BLOCO: EXPORTAÇÃO ---
             with Horizontal():
                 yield Label("Duração Total (s):")
                 yield Input(value="10", id="duration-input", type="number")
-            
-            # Linha: Diretório
             with Horizontal():
                 yield Label("Pasta de Saída:")
                 yield Input(placeholder="ex: datasets/", id="outdir-input")
 
-            # Etapa 2: Grid de Parametrização Manual (Fica escondido até escolher "manual")
+            # --- BLOCO: MANUAL (Escondido) ---
             with Grid(id="pqrst-params-grid"):
-                # Onda P
                 with Horizontal(classes="param-entry"):
                     yield Label("P Amp:")
                     yield Input(placeholder="1.2", id="p-amp-input")
                 with Horizontal(classes="param-entry"):
                     yield Label("P Larg:")
                     yield Input(placeholder="0.25", id="p-width-input")
-                # Onda R
                 with Horizontal(classes="param-entry"):
                     yield Label("R Amp:")
                     yield Input(placeholder="30.0", id="r-amp-input")
                 with Horizontal(classes="param-entry"):
                     yield Label("R Larg:")
                     yield Input(placeholder="0.1", id="r-width-input")
-                # Onda T (Bônus para simular isquemia)
                 with Horizontal(classes="param-entry"):
                     yield Label("T Amp:")
                     yield Input(placeholder="0.75", id="t-amp-input")
@@ -152,15 +173,11 @@ class ECGSimulatorApp(App):
 
         yield Footer()
 
-    # --- REATIVIDADE DA UI (Inalterada) ---
     def on_mount(self) -> None:
-        """Configura o estado inicial da UI após o carregamento."""
-        # Se começar no manual, já mostramos o grid
         if self.query_one("#rhythm-select", Select).value == "manual":
             self.query_one("#pqrst-params-grid").display = True
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        """Mostra o painel de parâmetros apenas se o modo 'manual' for selecionado."""
         if event.select.id == "rhythm-select":
             grid = self.query_one("#pqrst-params-grid")
             if event.value == "manual":
@@ -174,7 +191,6 @@ class ECGSimulatorApp(App):
             self.run_generation()
 
     def run_generation(self) -> None:
-        # ... (Lógica de geração inalterada) ...
         log = self.query_one("#log-view", RichLog)
         plot_view = self.query_one("#plot-view", Static)
         
@@ -184,32 +200,42 @@ class ECGSimulatorApp(App):
         
         try:
             duration = float(duration_str)
+            hr_val = float(self.query_one("#hr-input", Input).value)
+            hr_std_val = float(self.query_one("#hr-std-input", Input).value)
+            
+            # Lê os novos campos de ruído (usa 0.0 se estiver vazio)
+            bw_val = float(self.query_one("#bw-input", Input).value or 0.0)
+            pl_val = float(self.query_one("#pl-input", Input).value or 0.0)
+            noise_val = float(self.query_one("#noise-input", Input).value or 0.0)
+            
         except ValueError:
-            log.write("[bold red]Erro:[/bold red] Duração inválida.")
+            log.write("[bold red]Erro:[/bold red] Verifique se os números digitados são válidos.")
             return
 
-        # Lógica de negócio: Se for manual, usamos o motor "normal" e injetamos os overrides
         backend_rhythm = "normal" if ui_rhythm == "manual" else ui_rhythm
         overrides = self.parse_pqrst_overrides() if ui_rhythm == "manual" else None
 
-        log.write(f"Iniciando simulação de {duration}s ('{ui_rhythm}')...")
+        log.write(f"Iniciando simulação de {duration}s ('{ui_rhythm}'). FC: {hr_val} | Var: {hr_std_val}")
+        if bw_val > 0 or pl_val > 0 or noise_val > 0:
+            log.write(f"Injetando ruídos -> Respiração: {bw_val}, Rede: {pl_val}, Térmico: {noise_val}")
         
         try:
-            # 1. GERAÇÃO MATEMÁTICA (Passando os overrides)
             fs = 256
             t, ecg_signal = generate_signal(
                 rhythm=backend_rhythm, 
                 duration=duration, 
                 fs=fs, 
-                hr=60.0,
-                pqrst_overrides=overrides
+                hr=hr_val,
+                hr_std=hr_std_val,
+                pqrst_overrides=overrides,
+                bw_amp=bw_val,
+                pl_amp=pl_val,
+                noise_std=noise_val
             )
             
-            # 2. SALVAMENTO EM DISCO (CSV)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             cust_suffix = "_manual" if ui_rhythm == "manual" else ""
             
-            # Nomes dos arquivos
             csv_filename = f"ecg_{backend_rhythm}{cust_suffix}_{int(duration)}s_{timestamp}.csv"
             pdf_filename = f"ecg_{backend_rhythm}{cust_suffix}_{int(duration)}s_{timestamp}.pdf"
             
@@ -220,19 +246,15 @@ class ECGSimulatorApp(App):
             csv_filepath = out_dir / csv_filename
             pdf_filepath = out_dir / pdf_filename
                 
-            # Salva o CSV com o sinal COMPLETO
             with open(csv_filepath, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["time", "amplitude"])
                 for time_val, amp_val in zip(t, ecg_signal):
                     writer.writerow([time_val, amp_val])
                     
-            log.write(f"[bold green]Dados salvos![/bold green] CSV: [blue]{csv_filepath}[/blue]")
+            log.write(f"[bold green]Dados guardados![/bold green] CSV: [blue]{csv_filepath}[/blue]")
 
-            # ==========================================
-            # NOVO: 2.5 SALVAMENTO DO RELATÓRIO EM PDF
-            # ==========================================
-            # Limita a visualização do PDF para no máximo 10 segundos
+            # Geração do PDF
             pdf_samples = min(len(t), int(10.0 * fs))
             t_pdf = t[:pdf_samples]
             ecg_pdf = ecg_signal[:pdf_samples]
@@ -242,39 +264,33 @@ class ECGSimulatorApp(App):
             cor_pdf = "magenta" if ui_rhythm == "manual" else cor_pdf
             
             ax.plot(t_pdf, ecg_pdf, color=cor_pdf, linewidth=1.2)
-            ax.set_title(f"Relatório ECG - {ui_rhythm.upper()} (Amostra de {t_pdf[-1]:.1f}s)")
+            ax.set_title(f"Relatório ECG - {ui_rhythm.upper()} (FC: {hr_val} BPM)")
             ax.set_xlabel("Tempo (segundos)")
             ax.set_ylabel("Amplitude (z)")
             ax.grid(True, linestyle='--', alpha=0.7)
             fig.tight_layout()
             
-            # Salva e fecha a figura em background
             fig.savefig(pdf_filepath, format='pdf')
             plt.close(fig)
             
-            log.write(f"[bold green]Gráfico salvo![/bold green] PDF: [blue]{pdf_filepath}[/blue]")
+            log.write(f"[bold green]Gráfico gerado![/bold green] PDF: [blue]{pdf_filepath}[/blue]")
             
-            # Abre o PDF automaticamente no visualizador do sistema (Mac/Win/Linux)
             webbrowser.open(pdf_filepath.absolute().as_uri())
 
-            # 3. RENDERIZAÇÃO NO TERMINAL COM PLOTEXT
             pt.clf() 
             amostras_para_plot = min(len(t), fs * 4) 
             t_view = t[:amostras_para_plot]
             ecg_view = ecg_signal[:amostras_para_plot]
 
             cor_linha = "cyan" if backend_rhythm == "fa" else "red"
-            cor_linha = "magenta" if ui_rhythm == "manual" else cor_linha
+            cor_linha = "magenta" if ui_rhythm == "manual" else cor_linha 
             
-            # Pega o tamanho REAL do widget descontando bordas e padding
-            # Usamos 70 e 20 como fallback caso a tela ainda esteja sendo calculada
             plot_w = plot_view.content_size.width or 70
             plot_h = plot_view.content_size.height or 20
             
             pt.plot(t_view, ecg_view, color=cor_linha, marker="braille")
             pt.title(f"Amostra Visual (Primeiros {len(t_view)/fs:.1f}s) - {ui_rhythm.upper()}")
             
-            # Define o tamanho do gráfico para caber perfeitamente na caixa
             pt.plotsize(plot_w, plot_h) 
             pt.canvas_color("black")
             pt.axes_color("black")
@@ -286,39 +302,27 @@ class ECGSimulatorApp(App):
             log.write(f"[bold red]Erro fatal durante a geração:[/bold red] {str(e)}")
 
     def parse_pqrst_overrides(self) -> Dict[str, Any]:
-        """Lê os Inputs da TUI e constrói o dicionário de overrides."""
         overrides = {}
-        
-        # Função auxiliar para ler float opcional
         def get_opt_float(input_id: str):
             val = self.query_one(input_id, Input).value.strip()
             if not val: return None
             try: return float(val)
             except ValueError: return None
 
-        # Onda P
         p_amp = get_opt_float("#p-amp-input")
         p_width = get_opt_float("#p-width-input")
         if p_amp is not None or p_width is not None:
-            overrides['P'] = {}
-            if p_amp is not None: overrides['P']['a'] = p_amp
-            if p_width is not None: overrides['P']['b'] = p_width
+            overrides['P'] = {'a': p_amp, 'b': p_width}
 
-        # Onda R
         r_amp = get_opt_float("#r-amp-input")
         r_width = get_opt_float("#r-width-input")
         if r_amp is not None or r_width is not None:
-            overrides['R'] = {}
-            if r_amp is not None: overrides['R']['a'] = r_amp
-            if r_width is not None: overrides['R']['b'] = r_width
+            overrides['R'] = {'a': r_amp, 'b': r_width}
             
-        # Onda T
         t_amp = get_opt_float("#t-amp-input")
         t_width = get_opt_float("#t-width-input")
         if t_amp is not None or t_width is not None:
-            overrides['T'] = {}
-            if t_amp is not None: overrides['T']['a'] = t_amp
-            if t_width is not None: overrides['T']['b'] = t_width
+            overrides['T'] = {'a': t_amp, 'b': t_width}
             
         return overrides
 

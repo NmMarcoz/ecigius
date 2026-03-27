@@ -13,54 +13,59 @@ app = typer.Typer(help="Simulador de ECG baseado no modelo de McSharry (CLI)")
 
 @app.command()
 def generate(
-    # Argumentos Base
+    # Argumentos Base e Clínicos
     rhythm: str = typer.Option("normal", "--rhythm", "-r", help="Tipo de ritmo: 'normal' ou 'fa'"),
     duration: float = typer.Option(10.0, "--duration", "-d", help="Duração do sinal em segundos"),
     fs: int = typer.Option(256, "--fs", "-f", help="Frequência de amostragem em Hz"),
-    hr: float = typer.Option(60.0, "--hr", help="Frequência cardíaca (apenas ritmo normal)"),
+    hr: float = typer.Option(60.0, "--hr", help="Frequência cardíaca média em BPM"),
+    hr_std: float = typer.Option(1.0, "--hr-std", help="Desvio padrão (Variabilidade/Caos) da FC em BPM"),
     
-    # Parâmetros Morfológicos (Etapa 2 - Overrides)
-    p_amp: Optional[float] = typer.Option(None, help="Override Amplitude Onda P (default: 1.2)"),
-    p_width: Optional[float] = typer.Option(None, help="Override Largura Onda P (default: 0.25)"),
-    r_amp: Optional[float] = typer.Option(None, help="Override Amplitude Onda R (QRS) (default: 30.0)"),
-    r_width: Optional[float] = typer.Option(None, help="Override Largura Onda R (QRS) (default: 0.1)"),
+    p_amp: Optional[float] = typer.Option(None, help="Override Amplitude Onda P"),
+    p_width: Optional[float] = typer.Option(None, help="Override Largura Onda P"),
+    r_amp: Optional[float] = typer.Option(None, help="Override Amplitude Onda R"),
+    r_width: Optional[float] = typer.Option(None, help="Override Largura Onda R"),
     
-    # I/O
+    # Argumentos de Ruido
+    bw_amp: float = typer.Option(0.0, "--bw-amp", help="Amplitude do Baseline Wander (Respiração). Ex: 0.15"),
+    pl_amp: float = typer.Option(0.0, "--pl-amp", help="Amplitude da Interferência de Rede (60Hz). Ex: 0.05"),
+    noise_std: float = typer.Option(0.0, "--noise", help="Desvio Padrão do Ruído Gaussiano. Ex: 0.02"),
+    
     plot: bool = typer.Option(True, "--plot/--no-plot", help="Exibe o gráfico após gerar"),
-    output: str = typer.Option(None, "--output", "-o", help="Nome do arquivo (ex: teste.csv)"),
+    output: str = typer.Option(None, "--output", "-o", help="Nome do ficheiro (ex: teste.csv)"),
     out_dir: Path = typer.Option(None, "--out-dir", help="Pasta de destino (ex: datasets/)")
-):
+    ):
     """
     Gera um sinal sintético de ECG parametrizável e exporta os dados.
     """
     typer.secho(f"Gerando {duration}s de ECG no ritmo '{rhythm.upper()}' a {fs}Hz...", fg=typer.colors.CYAN)
     
-    # Constrói o dicionário de overrides morfológicos da Etapa 2
+    typer.secho(f"Gerando {duration}s de ECG no ritmo '{rhythm.upper()}' a {fs}Hz...", fg=typer.colors.CYAN)
+    
     overrides = {}
     if p_amp is not None or p_width is not None:
-        overrides['P'] = {}
-        if p_amp is not None: overrides['P']['a'] = p_amp
-        if p_width is not None: overrides['P']['b'] = p_width
-        
+        overrides['P'] = {'a': p_amp, 'b': p_width} if p_amp and p_width else {'a': p_amp} if p_amp else {'b': p_width}
     if r_amp is not None or r_width is not None:
-        overrides['R'] = {}
-        if r_amp is not None: overrides['R']['a'] = r_amp
-        if r_width is not None: overrides['R']['b'] = r_width
+        overrides['R'] = {'a': r_amp, 'b': r_width} if r_amp and r_width else {'a': r_amp} if r_amp else {'b': r_width}
 
     try:
-        # Passa os overrides para o motor
+        # Passamos as flags de ruído para o gerador
         t, ecg_signal = generate_signal(
             rhythm=rhythm, 
             duration=duration, 
             fs=fs, 
             hr=hr,
-            pqrst_overrides=overrides if overrides else None
+            hr_std=hr_std,
+            pqrst_overrides=overrides if overrides else None,
+            bw_amp=bw_amp,
+            pl_amp=pl_amp,
+            noise_std=noise_std
         )
     except Exception as e:
         typer.secho(f"Erro na geração matemática: {e}", fg=typer.colors.RED)
         raise typer.Exit(1)
     
-    # --- LÓGICA DE SALVAMENTO (Inalterada) ---
+    
+    # --- LÓGICA DE SALVAMENTO ---
     if output or out_dir:
         if not output:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -82,14 +87,14 @@ def generate(
                     writer.writerow([time_val, amp_val])
             typer.secho(f"Sinal salvo com sucesso em: {filepath}", fg=typer.colors.GREEN)
         except Exception as e:
-            typer.secho(f"Erro ao salvar arquivo: {e}", fg=typer.colors.RED)
+            typer.secho(f"Erro ao guardar ficheiro: {e}", fg=typer.colors.RED)
 
-    # --- LÓGICA DE PLOTAGEM (Inalterada) ---
+    # --- LÓGICA DE PLOTAGEM ---
     if plot:
         plt.figure(figsize=(12, 4))
         color = 'blue' if rhythm == 'fa' else 'red'
         cust_msg = " (Customizado)" if overrides else ""
-        title = f"ECG - {'FA' if rhythm == 'fa' else f'Normal ({hr} BPM)'}{cust_msg}"
+        title = f"ECG - {'FA' if rhythm == 'fa' else f'Normal'} (FC: {hr} BPM, Var: {hr_std}){cust_msg}"
         
         plt.plot(t, ecg_signal, color=color, linewidth=1.5)
         plt.title(title)
