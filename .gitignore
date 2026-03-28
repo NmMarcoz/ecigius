@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 /output
+
+/files
+
+**.pdf
+**.csv

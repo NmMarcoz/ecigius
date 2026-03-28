@@ -2,12 +2,14 @@
 import typer
 import csv
 from pathlib import Path
+import numpy as np
 from datetime import datetime
 import matplotlib.pyplot as plt
 from typing import Optional
 
 # Importamos o motor matemático do workspace
 from ecigius_core import generate_signal
+from ecigius_core.validation import ECGValidator
 
 app = typer.Typer(help="Simulador de ECG baseado no modelo de McSharry (CLI)")
 
@@ -32,7 +34,10 @@ def generate(
     
     plot: bool = typer.Option(True, "--plot/--no-plot", help="Exibe o gráfico após gerar"),
     output: str = typer.Option(None, "--output", "-o", help="Nome do ficheiro (ex: teste.csv)"),
-    out_dir: Path = typer.Option(None, "--out-dir", help="Pasta de destino (ex: datasets/)")
+    out_dir: Path = typer.Option(None, "--out-dir", help="Pasta de destino (ex: datasets/)"),
+
+    reference_csv: Path = typer.Option(None, "--reference-csv", help="Caminho para um CSV real do MIT-BIH para validação"),
+    val_beats: int = typer.Option(1, "--val-beats", help="Número de batimentos para extrair e alinhar no cálculo do PRD/RMSE") # NOVO PARÂMETRO
     ):
     """
     Gera um sinal sintético de ECG parametrizável e exporta os dados.
@@ -103,6 +108,46 @@ def generate(
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+    if reference_csv and reference_csv.exists():
+        typer.secho(f"\nCarregando template real de: {reference_csv}...", fg=typer.colors.YELLOW)
+        try:
+            real_data = np.loadtxt(reference_csv, delimiter=',', skiprows=1)
+            real_signal = real_data[:, 1]
+            
+            typer.secho(f"Extraindo e alinhando os {val_beats} primeiros batimentos...", fg=typer.colors.YELLOW)
+            # Agora passamos o fs e o num_beats pro validador!
+            
+            metrics = ECGValidator.validate(ecg_signal, real_signal, fs=fs, num_beats=val_beats)
+            
+            # --- LÓGICA DOS SELOS INDIVIDUAIS ---
+            dtw_val = metrics['dtw_distance']
+            prd_val = metrics['prd_percent']
+            rmse_val = metrics['rmse']
+            
+            # Limiares de aceitação
+            dtw_ok = "✅" if dtw_val < 0.15 else "❌"
+            prd_ok = "✅" if prd_val < 50.0 else "❌"
+            rmse_ok = "✅" if rmse_val < 0.30 else "❌" # 0.30 é uma boa margem de erro quadrático
+            
+            typer.secho("\n--- RELATÓRIO DE VALIDAÇÃO CIENTÍFICA ---", fg=typer.colors.MAGENTA, bold=True)
+            typer.echo(f"{dtw_ok} DTW Distance (Macro) : {dtw_val} (Ritmo/Arritmia)")
+            typer.echo(f"{prd_ok} PRD Score (Micro)    : {prd_val}% (Morfologia PQRST)")
+            typer.echo(f"{rmse_ok} RMSE (Micro)         : {rmse_val}")
+            typer.echo(f"   Batimentos Alinhados : {metrics['beats_compared']} de {val_beats} solicitados")
+            
+            # O Veredito final pode ser "Parcial" se o ritmo estiver correto mas a morfologia não
+            if dtw_val < 0.15 and prd_val < 50.0:
+                typer.secho("\n🌟 Veredito Geral: SINAL EXCELENTE (Ritmo e Morfologia validados)", fg=typer.colors.GREEN, bold=True)
+            elif dtw_val < 0.15:
+                typer.secho("\n⚠️ Veredito Geral: RITMO VALIDADO (Ajuste os parâmetros PQRST para melhorar a morfologia)", fg=typer.colors.YELLOW, bold=True)
+            else:
+                typer.secho("\n❌ Veredito Geral: ALTA DISTORÇÃO (Falha no Ritmo e na Morfologia)", fg=typer.colors.RED, bold=True)
+                
+            typer.echo("------------------------------------------\n")
+            
+        except Exception as e:
+            typer.secho(f"Erro ao ler referência ou validar: {e}", fg=typer.colors.RED)
 
 if __name__ == "__main__":
     app()

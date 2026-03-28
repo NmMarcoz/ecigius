@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 dependencies = [
     "ecigius-core",
     "ecigius-cli",
-    "ecigius-tui"
+    "ecigius-tui",
+    "fastdtw>=0.3.4",
+    "wfdb>=4.3.1",
 ]
 
 [tool.uv.workspace]
